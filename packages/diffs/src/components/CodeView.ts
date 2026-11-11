@@ -4478,6 +4478,11 @@ function shouldClearPool<LAnnotation, Caret>(
   );
 }
 
+// Reports whether an option that changes rendered item heights differs, so
+// setOptions can drop every cached item height instead of only re-measuring the
+// items currently in the render window. loadDiffFiles counts by presence: with
+// a loader, partial diffs render a trailing "more context may be available"
+// separator after their last hunk, which makes each of them taller.
 function hasItemLayoutOptionChanged<LAnnotation, Caret>(
   previousOptions: CodeViewOptions<LAnnotation, Caret>,
   nextOptions: CodeViewOptions<LAnnotation, Caret>
@@ -4496,6 +4501,8 @@ function hasItemLayoutOptionChanged<LAnnotation, Caret>(
       (nextOptions.diffIndicators ?? 'bars') ||
     (previousOptions.hunkSeparators ?? 'line-info') !==
       (nextOptions.hunkSeparators ?? 'line-info') ||
+    Boolean(previousOptions.loadDiffFiles) !==
+      Boolean(nextOptions.loadDiffFiles) ||
     (previousOptions.expandUnchanged ?? false) !==
       (nextOptions.expandUnchanged ?? false) ||
     (previousOptions.collapsedContextThreshold ??
@@ -4505,6 +4512,8 @@ function hasItemLayoutOptionChanged<LAnnotation, Caret>(
   );
 }
 
+// Reports whether an option that feeds the estimated height of unrendered
+// diffs differs, so those estimates are recomputed along with measured heights.
 function hasCodeViewDiffEstimateOptionChanged<LAnnotation, Caret>(
   previousOptions: CodeViewOptions<LAnnotation, Caret>,
   nextOptions: CodeViewOptions<LAnnotation, Caret>
@@ -4514,6 +4523,8 @@ function hasCodeViewDiffEstimateOptionChanged<LAnnotation, Caret>(
       (nextOptions.disableFileHeader ?? false) ||
     (previousOptions.hunkSeparators ?? 'line-info') !==
       (nextOptions.hunkSeparators ?? 'line-info') ||
+    Boolean(previousOptions.loadDiffFiles) !==
+      Boolean(nextOptions.loadDiffFiles) ||
     (previousOptions.expandUnchanged ?? false) !==
       (nextOptions.expandUnchanged ?? false) ||
     (previousOptions.collapsedContextThreshold ??

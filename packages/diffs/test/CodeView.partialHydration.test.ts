@@ -26,20 +26,20 @@ afterAll(async () => {
   await disposeHighlighter();
 });
 
-function createPartialChange(): {
+function createPartialChange(name = 'partial.ts'): {
   oldFile: FileContents;
   newFile: FileContents;
   partial: FileDiffMetadata;
 } {
   const oldFile: FileContents = {
-    name: 'partial.ts',
+    name,
     contents: 'keep 1\nold value\nkeep 3\nkeep 4\n',
-    cacheKey: 'partial:old',
+    cacheKey: `${name}:old`,
   };
   const newFile: FileContents = {
     name: oldFile.name,
     contents: 'keep 1\nnew value\nkeep 3\nkeep 4\n',
-    cacheKey: 'partial:new',
+    cacheKey: `${name}:new`,
   };
   const partial = parsePatchFiles(
     createTwoFilesPatch(
@@ -51,11 +51,21 @@ function createPartialChange(): {
       undefined,
       { context: 0 }
     ),
-    { cacheKeyPrefix: 'partial', throwOnError: true }
+    { cacheKeyPrefix: name, throwOnError: true }
   )[0]?.files[0];
   assertDefined(partial, 'expected patch to contain one partial diff');
   expect(partial.isPartial).toBe(true);
   return { oldFile, newFile, partial };
+}
+
+// Builds enough partial diffs that most of them sit outside the render window,
+// so their heights come from CodeView's cached layout rather than a re-render.
+function createPartialItems(count: number): CodeViewItem<undefined>[] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `diff:partial-${index}.ts`,
+    type: 'diff',
+    fileDiff: createPartialChange(`partial-${index}.ts`).partial,
+  }));
 }
 
 describe('CodeView partial hydration', () => {
@@ -134,6 +144,47 @@ describe('CodeView partial hydration', () => {
       cleanup();
     }
   });
+
+  for (const transition of ['adding', 'removing'] as const) {
+    test(`relayouts every item when ${transition} loadDiffFiles after mount`, async () => {
+      const { cleanup } = installDom();
+      const itemCount = 40;
+      const lastItemId = `diff:partial-${itemCount - 1}.ts`;
+      const loadDiffFiles = () => new Promise<never>(() => {});
+      const initialOptions = transition === 'adding' ? {} : { loadDiffFiles };
+      const nextOptions = transition === 'adding' ? { loadDiffFiles } : {};
+      // The reference viewer has the final options from the start, so its
+      // layout is what the toggled viewer must converge on.
+      const reference = new CodeView<undefined>(nextOptions);
+      const viewer = new CodeView<undefined>(initialOptions);
+
+      try {
+        reference.setup(createRoot());
+        await renderItems(reference, createPartialItems(itemCount));
+        viewer.setup(createRoot());
+        await renderItems(viewer, createPartialItems(itemCount));
+
+        // A loader makes each partial diff render a trailing "more context
+        // may be available" separator, so the two layouts must differ.
+        expect(viewer.getScrollHeight()).not.toBe(reference.getScrollHeight());
+        expect(viewer.getRenderedItems().length).toBeLessThan(itemCount);
+
+        viewer.setOptions(nextOptions);
+        viewer.render(true);
+        await wait(0);
+
+        expect(viewer.getScrollHeight()).toBe(reference.getScrollHeight());
+        expect(viewer.getTopForItem(lastItemId)).toBe(
+          reference.getTopForItem(lastItemId)
+        );
+      } finally {
+        viewer.cleanUp();
+        reference.cleanUp();
+        await wait(0);
+        cleanup();
+      }
+    });
+  }
 
   test('hydrates the caller fileDiff in place when consuming the staged clone', async () => {
     const { cleanup } = installDom();
